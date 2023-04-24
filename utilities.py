@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import cv2
 import cvzone
 import math
+import pandas as pd
 import numpy as np
 from ultralytics.yolo.utils.ops import scale_image
 # cap = cv2.VideoCapture(1)  # For Webcam
@@ -53,16 +54,17 @@ def overlay(image, mask, cls , alpha, resize=None):
     color = color[::-1]
     colored_mask = np.expand_dims(mask, 0).repeat(3, axis=0)
     colored_mask = np.moveaxis(colored_mask, 0, -1)
-    masked = np.ma.MaskedArray(image, mask=colored_mask, fill_value=(0,0,0))
+    masked = np.ma.MaskedArray(image, mask=colored_mask, fill_value=color)
     # print(masked)
     image_overlay = masked.filled()
+    # cv2.imshow('mask',colored_mask)
 
     ### passing back contour for point polygon test
-    gray = cv2.cvtColor(image_overlay, cv2.COLOR_BGR2GRAY)
-    canny = cv2.Canny(gray, 120, 255, 1)
-    cnts = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    gray = cv2.cvtColor(colored_mask, cv2.COLOR_BGR2GRAY)
+    canny = cv2.Canny(gray.astype(np.uint8), 0, 0, 1)
+    cnts = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-
+    # cv2.imshow('mask2', canny)
 
     if resize is not None:
         image = cv2.resize(image.transpose(1, 2, 0), resize)
