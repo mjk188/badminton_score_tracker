@@ -3,8 +3,9 @@ from utilities import *
 
 cap = cv2.VideoCapture("../Videos/sample4.mp4")  # For Video
 
+
 model1 = YOLO("../Yolo-Weights/shuttle.pt")
-model2 = YOLO("../Yolo-Weights/yolov8n.pt")
+model2 = YOLO("../Yolo-Weights/YOLOv8n-pose.pt")
 model_seg = YOLO("../Yolo-Weights/court_segmentation.pt")
 
 classNames1 = ['shuttlecock']
@@ -47,6 +48,15 @@ box4_contour = dict()
 flag=1
 
 bordersize=10
+
+session_start = False
+session_counter = 0
+shuttlecock_direction = None
+consecutive_frames = 0
+min_consecutive_frames = 5
+timeout_counter = 0
+timeout_threshold = 3  # Adjust the timeout threshold as needed
+shuttlecock_threshold = 10  # Adjust the shuttlecock threshold as needed
 
 while True and flag:
 
@@ -126,6 +136,69 @@ while True and flag:
                                        (max(0, x1), max(35, y1)), scale=1, thickness=1,colorB=myColor,
                                        colorT=(255,255,255),colorR=myColor, offset=5)
                     cv2.rectangle(img, (x1, y1), (x2, y2), myColor, 3)
+                    box_center_x = x1 + w // 2
+                    box_center_y = y1 + h // 2
+                    # Check if session has started
+                    if not session_start:
+                        session_start = True
+                        session_counter += 1
+                        print("Session", session_counter, "started.")
+
+                    # Calculate shuttlecock direction based on previous frame
+                    if shuttlecock_direction is not None:
+                        prev_x, prev_y = shuttlecock_direction
+                        curr_x = box_center_x
+                        curr_y = box_center_y
+
+                        if curr_x < prev_x:
+                            print("Shuttlecock is moving left.")
+                        elif curr_x > prev_x:
+                            print("Shuttlecock is moving right.")
+                        elif curr_y < prev_y:
+                            print("Shuttlecock is moving up.")
+                        elif curr_y > prev_y:
+                            print("Shuttlecock is moving down.")
+
+                    # Update shuttlecock direction
+                    shuttlecock_direction = (box_center_x, box_center_y)
+
+                    # Increment consecutive frames counter
+                    consecutive_frames += 1
+
+                    # Reset timeout counter
+                    timeout_counter = 0
+
+                else:
+                    # Increment consecutive frames counter
+                    consecutive_frames += 1
+
+                    # Increment timeout counter
+                    timeout_counter += 1
+
+                    # Check if session should end based on consecutive frames and timeout threshold
+                    if session_start and consecutive_frames >= min_consecutive_frames and timeout_counter < timeout_threshold:
+                        # Check if shuttlecock is within threshold of the bounding box
+                        if shuttlecock_direction is not None:
+                            prev_x, prev_y = shuttlecock_direction
+                            distance = math.sqrt((prev_x - box_center_x) ** 2 + (prev_y - box_center_y) ** 2)
+                            if distance <= shuttlecock_threshold:
+                                continue
+
+                        # End the session
+                        session_start = False
+                        print("Session", session_counter, "ended.")
+                        shuttlecock_direction = None
+                        consecutive_frames = 0
+
+                # Check if session should end based on timeout threshold
+                if session_start and timeout_counter >= timeout_threshold:
+                    session_start = False
+                    print("Session", session_counter, "ended.")
+                    shuttlecock_direction = None
+                    consecutive_frames = 0
+
+
+
                     middle_point=(int((x1+x2)/2),int((y1+y2)/2))
                     box1_tracker = cv2.pointPolygonTest(box1_contour['cnts'][box1_contour['index']], middle_point, False)
                     box2_tracker = cv2.pointPolygonTest(box2_contour['cnts'][box2_contour['index']], middle_point, False)
@@ -165,6 +238,7 @@ while True and flag:
         results = model2(img, stream=True, device="mps")
         for r in results:
             boxes = r.boxes
+
             for box in boxes:
                 # Bounding Box
                 x1, y1, x2, y2 = box.xyxy[0]
@@ -189,6 +263,9 @@ while True and flag:
 
         cv2.putText(img, 'Player2 Score: '+str(p2_board), (91, 200), cv2.FONT_HERSHEY_PLAIN, 5, (50, 50, 230), 7)
         cv2.putText(img, 'Player1 Score: '+str(p1_board), (1190, 150), cv2.FONT_HERSHEY_PLAIN, 5, (50, 50, 230), 7)
+
+        cv2.putText(img, 'Session : ' + str(session_counter), (600, 150), cv2.FONT_HERSHEY_PLAIN, 5, (50, 50, 230), 7)
+
         result.write(img)
         cv2.imshow("Image", img)
         if cv2.waitKey(1) & 0xFF == ord('s'):
